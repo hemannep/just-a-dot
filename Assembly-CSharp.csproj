@@ -49,7 +49,22 @@
     <Analyzer Include="/Users/hemanneupane/Just a Dot/Library/PackageCache/com.unity.dt.app-ui@7b87c8225c06/Runtime/SourceGenerators/netstandard2.0/EnumToLowerCase.dll" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Assets/Scripts/Gameplay/LevelManager.cs" />
+    <Compile Include="Assets/Scripts/Gameplay/DotController.cs" />
+    <Compile Include="Assets/Scripts/Systems/AudioManager.cs" />
+    <Compile Include="Assets/Scripts/Core/SaveSystem.cs" />
+    <Compile Include="Assets/Scripts/Systems/AnalyticsManager.cs" />
+    <Compile Include="Assets/Scripts/Gameplay/SensorManager.cs" />
+    <Compile Include="Assets/Scripts/UI/HomeUI.cs" />
     <Compile Include="Assets/TutorialInfo/Scripts/Readme.cs" />
+    <Compile Include="Assets/Scripts/UI/GameplayUI.cs" />
+    <Compile Include="Assets/Scripts/Systems/AdManager.cs" />
+    <Compile Include="Assets/Scripts/Core/GameManager.cs" />
+    <Compile Include="Assets/Scripts/UI/SettingsUI.cs" />
+    <Compile Include="Assets/Scripts/UI/UIManager.cs" />
+    <Compile Include="Assets/Scripts/UI/LevelsUI.cs" />
+    <Compile Include="Assets/Scripts/Core/SceneController.cs" />
+    <Compile Include="Assets/Scripts/Gameplay/InputDetector.cs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="UnityEngine">
