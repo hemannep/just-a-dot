@@ -374,65 +374,90 @@ namespace JustADot.Core
         {
             isSaving = true;
             bool success = false;
+            string errorMessage = null;
+            
+            // Update metadata
+            data.timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            data.deviceId = SystemInfo.deviceUniqueIdentifier;
+            
+            // Calculate checksum
+            data.checksum = CalculateChecksum(data);
+            
+            // Serialize data
+            string jsonData = JsonUtility.ToJson(data, true);
+            
+            // Encrypt if enabled
+            byte[] dataToSave = EncryptData(jsonData);
+            
+            // Save to temp file first (atomic operation)
+            string tempPath = Path.Combine(savePath, TEMP_SAVE_FILE);
+            
+            // Try to write file
+            bool writeComplete = false;
+            bool writeSuccess = false;
             
             try
             {
-                // Update metadata
-                data.timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                data.deviceId = SystemInfo.deviceUniqueIdentifier;
-                
-                // Calculate checksum
-                data.checksum = CalculateChecksum(data);
-                
-                // Serialize data
-                string jsonData = JsonUtility.ToJson(data, true);
-                
-                // Encrypt if enabled
-                byte[] dataToSave = EncryptData(jsonData);
-                
-                // Save to temp file first (atomic operation)
-                string tempPath = Path.Combine(savePath, TEMP_SAVE_FILE);
-                
-                yield return StartCoroutine(WriteFileAsync(tempPath, dataToSave));
-                
-                // Backup current save
-                string mainPath = Path.Combine(savePath, PRIMARY_SAVE_FILE);
-                if (File.Exists(mainPath))
-                {
-                    string backupFilePath = Path.Combine(savePath, BACKUP_SAVE_FILE);
-                    File.Copy(mainPath, backupFilePath, true);
-                }
-                
-                // Move temp to main
-                if (File.Exists(tempPath))
-                {
-                    File.Move(tempPath, mainPath);
-                    success = true;
-                }
-                
-                // Update cache
-                runtimeCache["GameData"] = data;
-                dirtyKeys.Remove("GameData");
-                
-                lastSaveTime = DateTime.Now;
-                
-                Debug.Log($"[SaveSystem] Game data saved successfully at {lastSaveTime}");
+                File.WriteAllBytes(tempPath, dataToSave);
+                writeSuccess = true;
             }
             catch (Exception e)
             {
-                Debug.LogError($"[SaveSystem] Save failed: {e.Message}");
-                OnSaveError?.Invoke(e.Message);
+                errorMessage = e.Message;
+                writeSuccess = false;
+            }
+            
+            writeComplete = true;
+            
+            yield return new WaitUntil(() => writeComplete);
+            
+            if (writeSuccess)
+            {
+                try
+                {
+                    // Backup current save
+                    string mainPath = Path.Combine(savePath, PRIMARY_SAVE_FILE);
+                    if (File.Exists(mainPath))
+                    {
+                        string backupFilePath = Path.Combine(savePath, BACKUP_SAVE_FILE);
+                        File.Copy(mainPath, backupFilePath, true);
+                    }
+                    
+                    // Move temp to main
+                    if (File.Exists(tempPath))
+                    {
+                        File.Move(tempPath, mainPath);
+                        success = true;
+                    }
+                    
+                    // Update cache
+                    runtimeCache["GameData"] = data;
+                    dirtyKeys.Remove("GameData");
+                    
+                    lastSaveTime = DateTime.Now;
+                    
+                    Debug.Log($"[SaveSystem] Game data saved successfully at {lastSaveTime}");
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[SaveSystem] Save failed: {e.Message}");
+                    OnSaveError?.Invoke(e.Message);
+                    success = false;
+                }
+            }
+            else
+            {
+                Debug.LogError($"[SaveSystem] Write failed: {errorMessage}");
+                OnSaveError?.Invoke(errorMessage);
                 success = false;
             }
-            finally
-            {
-                isSaving = false;
-                OnSaveComplete?.Invoke(success);
-                callback?.Invoke(success);
-                
-                // Process queued saves
-                ProcessSaveQueue();
-            }
+            
+            isSaving = false;
+            OnSaveComplete?.Invoke(success);
+            callback?.Invoke(success);
+            
+            // Process queued saves
+            ProcessSaveQueue();
         }
 
         public void SaveSettings(SettingsData settings, Action<bool> callback = null)
@@ -443,25 +468,42 @@ namespace JustADot.Core
         private IEnumerator SaveSettingsAsync(SettingsData settings, Action<bool> callback)
         {
             bool success = false;
+            string errorMessage = null;
+            
+            string jsonData = JsonUtility.ToJson(settings, true);
+            string filePath = Path.Combine(savePath, SETTINGS_FILE);
+            
+            // Settings are not encrypted for easier debugging
+            byte[] dataToSave = Encoding.UTF8.GetBytes(jsonData);
+            
+            // Try to write file
+            bool writeComplete = false;
+            bool writeSuccess = false;
             
             try
             {
-                string jsonData = JsonUtility.ToJson(settings, true);
-                string filePath = Path.Combine(savePath, SETTINGS_FILE);
-                
-                // Settings are not encrypted for easier debugging
-                byte[] dataToSave = Encoding.UTF8.GetBytes(jsonData);
-                
-                yield return StartCoroutine(WriteFileAsync(filePath, dataToSave));
-                
-                runtimeCache["Settings"] = settings;
-                success = true;
-                
-                Debug.Log("[SaveSystem] Settings saved successfully");
+                File.WriteAllBytes(filePath, dataToSave);
+                writeSuccess = true;
             }
             catch (Exception e)
             {
-                Debug.LogError($"[SaveSystem] Settings save failed: {e.Message}");
+                errorMessage = e.Message;
+                writeSuccess = false;
+            }
+            
+            writeComplete = true;
+            
+            yield return new WaitUntil(() => writeComplete);
+            
+            if (writeSuccess)
+            {
+                runtimeCache["Settings"] = settings;
+                success = true;
+                Debug.Log("[SaveSystem] Settings saved successfully");
+            }
+            else
+            {
+                Debug.LogError($"[SaveSystem] Settings save failed: {errorMessage}");
                 success = false;
             }
             
@@ -476,59 +518,44 @@ namespace JustADot.Core
         private IEnumerator SaveStatisticsAsync(StatisticsData stats, Action<bool> callback)
         {
             bool success = false;
+            string errorMessage = null;
+            
+            string jsonData = JsonUtility.ToJson(stats, true);
+            byte[] encryptedData = EncryptData(jsonData);
+            string filePath = Path.Combine(savePath, STATS_FILE);
+            
+            // Try to write file
+            bool writeComplete = false;
+            bool writeSuccess = false;
             
             try
             {
-                string jsonData = JsonUtility.ToJson(stats, true);
-                byte[] encryptedData = EncryptData(jsonData);
-                string filePath = Path.Combine(savePath, STATS_FILE);
-                
-                yield return StartCoroutine(WriteFileAsync(filePath, encryptedData));
-                
-                runtimeCache["Statistics"] = stats;
-                success = true;
-                
-                Debug.Log("[SaveSystem] Statistics saved successfully");
+                File.WriteAllBytes(filePath, encryptedData);
+                writeSuccess = true;
             }
             catch (Exception e)
             {
-                Debug.LogError($"[SaveSystem] Statistics save failed: {e.Message}");
+                errorMessage = e.Message;
+                writeSuccess = false;
+            }
+            
+            writeComplete = true;
+            
+            yield return new WaitUntil(() => writeComplete);
+            
+            if (writeSuccess)
+            {
+                runtimeCache["Statistics"] = stats;
+                success = true;
+                Debug.Log("[SaveSystem] Statistics saved successfully");
+            }
+            else
+            {
+                Debug.LogError($"[SaveSystem] Statistics save failed: {errorMessage}");
                 success = false;
             }
             
             callback?.Invoke(success);
-        }
-
-        private IEnumerator WriteFileAsync(string path, byte[] data)
-        {
-            bool writeComplete = false;
-            Exception writeException = null;
-            
-            // Perform file write on background thread
-            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
-            {
-                try
-                {
-                    File.WriteAllBytes(path, data);
-                    writeComplete = true;
-                }
-                catch (Exception e)
-                {
-                    writeException = e;
-                    writeComplete = true;
-                }
-            });
-            
-            // Wait for write to complete
-            while (!writeComplete)
-            {
-                yield return null;
-            }
-            
-            if (writeException != null)
-            {
-                throw writeException;
-            }
         }
 
         public void QuickSave()
@@ -1359,7 +1386,7 @@ namespace JustADot.Core
         [UnityEditor.MenuItem("Just a Dot/Save System/Create Debug Save")]
         private static void CreateDebugSave()
         {
-            SaveSystem saveSystem = FindObjectOfType<SaveSystem>();
+            SaveSystem saveSystem = FindFirstObjectByType<SaveSystem>();
             if (saveSystem == null)
             {
                 GameObject go = new GameObject("SaveSystem");
